@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="ISO-8859-15"?>
+<launch>
+  <!-- Publish point cloud from file -->
+  <node pkg="point_cloud_io" type="read" name="read" output="screen">
+    <param name="file_path" value="/media/anurag/DATA-EXT/speedtree/tree_leaves_0/Broadleaf_High_scaled_0.2.ply" />
+    <param name="topic"     value="/my_mesh" />
+    <param name="frame"     value="map" />
+    <!-- <param name="rate"      value="1.0" /> -->
+  </node>
+  
+  <!-- Octomap Server -->
+  <node pkg="octomap_server" type="octomap_server_node" name="octomap_server">
+    <param name="resolution" value="1.0" />
+
+    <!-- fixed map frame (set to 'map' if SLAM or localization running!) -->
+    <param name="frame_id" type="string" value="map" />
+
+    <!-- maximum range to integrate (speedup!) -->
+    <param name="max_sensor_range" value="50.0" />
+
+    <param name="latch" value="false" />
+    <!-- data source to integrate (PointCloud2) -->
+    <remap from="cloud_in" to="/my_mesh" />
+
+  </node>
+
+  <node pkg="octomap_server" type="octomap_saver" name="octomap_saver" args="-f $(request)/meshes/tree.bt" />
+</launch>
