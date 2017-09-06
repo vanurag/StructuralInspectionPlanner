@@ -1,5 +1,5 @@
 /*!
- * \file requester.cpp
+ * \file bigBen.cpp
  *
  * More elaborate description
  */
@@ -14,13 +14,17 @@
 #include <std_msgs/Int32.h>
 #include <ros/package.h>
 #include "tf/tf.h"
+#include <Eigen/Dense>
 
 std::vector<nav_msgs::Path> * readSTLfile(std::string name);
+double g_maxSpeed;
+double g_maxAngularSpeed;
+Eigen::Vector3d g_mavStartPos;
 
 int main(int argc, char **argv)
 {
-  ros::init(argc, argv, "requester");
-  ROS_INFO("Requester is alive");
+  ros::init(argc, argv, "tree");
+  ROS_INFO("speed tree");
   if (argc != 1)
   {
     ROS_INFO("usage: plan");
@@ -36,32 +40,37 @@ int main(int argc, char **argv)
   ros::Rate r2(1.0);
   r2.sleep();
 
+  if(!ros::param::get("/Inspection_Planner/rotorcraft/maxSpeed", g_maxSpeed)) {
+    std::cout << "couldn't get max speed param" << std::endl;
+    exit(1);
+  } else {
+    std::cout << "got max speed param: " << g_maxSpeed << std::endl;
+  }
+  if(!ros::param::get("/Inspection_Planner/rotorcraft/maxAngularSpeed", g_maxAngularSpeed)) {
+    std::cout << "couldn't get max angular speed param" << std::endl;
+    exit(1);
+  } else {
+    std::cout << "got max angular speed param: " << g_maxAngularSpeed << std::endl;
+  }
+
   /* define the bounding box */
   koptplanner::inspection srv;
-  srv.request.spaceSize.push_back(1375);
-  srv.request.spaceSize.push_back(2165);
-  srv.request.spaceSize.push_back(0.001);
-  srv.request.spaceCenter.push_back(1375.0/2.0);
-  srv.request.spaceCenter.push_back(2165.0/2.0);
-  srv.request.spaceCenter.push_back(200.0);
+  srv.request.spaceSize.push_back(12);
+  srv.request.spaceSize.push_back(12);
+  srv.request.spaceSize.push_back(12);
+  srv.request.spaceCenter.push_back(0);
+  srv.request.spaceCenter.push_back(0);
+  srv.request.spaceCenter.push_back(6);
   geometry_msgs::Pose reqPose;
 
-  /* starting pose */
-  reqPose.position.x = 300.0;
-  reqPose.position.y = 300.0;
-  reqPose.position.z = 200.0;
+  /* starting pose*/
+  reqPose.position.x = 6.0;
+  g_mavStartPos[0] = reqPose.position.x;
+  reqPose.position.y = 0.0;
+  g_mavStartPos[1] = reqPose.position.y;
+  reqPose.position.z = 0.0;
+  g_mavStartPos[2] = reqPose.position.z;
   tf::Quaternion q = tf::createQuaternionFromRPY(0.0, 0.0, 0.0);
-  reqPose.orientation.x = q.x();
-  reqPose.orientation.y = q.y();
-  reqPose.orientation.z = q.z();
-  reqPose.orientation.w = q.w();
-  srv.request.requiredPoses.push_back(reqPose);
-
-  /* final pose (remove if no explicit final pose is desired) */
-  reqPose.position.x = 400.0;
-  reqPose.position.y = 300.0;
-  reqPose.position.z = 200.0;
-  q = tf::createQuaternionFromRPY(0.0, 0.0, 0.0);
   reqPose.orientation.x = q.x();
   reqPose.orientation.y = q.y();
   reqPose.orientation.z = q.z();
@@ -70,12 +79,12 @@ int main(int argc, char **argv)
 
   /* parameters for the path calculation (such as may change during mission) */
   srv.request.incidenceAngle = M_PI/6.0;
-  srv.request.minDist = 40.0;
-  srv.request.maxDist = 300.0;
-  srv.request.numIterations = 20;
+  srv.request.minDist = 1.5;
+  srv.request.maxDist = 5.0;
+  srv.request.numIterations = 40;
 
   /* read STL file and publish to rviz */
-  std::vector<nav_msgs::Path> * mesh = readSTLfile(ros::package::getPath("request")+"/meshes/regularPlanes/rPlane.stl");
+  std::vector<nav_msgs::Path> * mesh = readSTLfile(ros::package::getPath("request")+"/meshes/tree.stl");
   ROS_INFO("mesh size = %i", (int)mesh->size());
   for(std::vector<nav_msgs::Path>::iterator it = mesh->begin(); it != mesh->end() && ros::ok(); it++)
   {
@@ -98,56 +107,6 @@ int main(int argc, char **argv)
     r.sleep();
   }
 
-  /* define obstacle regions as cuboids that are coordinate system aligned */
-  /*
-  shape_msgs::SolidPrimitive body;
-  body.type = shape_msgs::SolidPrimitive::BOX;
-  body.dimensions.push_back(40.0);
-  body.dimensions.push_back(50.0);
-  body.dimensions.push_back(4.0);
-  srv.request.obstacles.push_back(body);
-  geometry_msgs::Pose pose;
-  pose.position.x = 600.0;
-  pose.position.y = 600.0;
-  pose.position.z = 200.0;
-  pose.orientation.x = 0.0;
-  pose.orientation.y = 0.0;
-  pose.orientation.z = 0.0;
-  pose.orientation.w = 1.0;
-  srv.request.obstaclesPoses.push_back(pose);
-  srv.request.obstacleIntransparancy.push_back(0);
-
-  // publish obstacles for rviz 
-  visualization_msgs::Marker marker;
-  marker.header.frame_id = "/kopt_frame";
-  marker.header.stamp = ros::Time::now();
-  marker.ns = "obstacles";
-  marker.id = 0; // enumerate when adding more obstacles
-  marker.type = visualization_msgs::Marker::CUBE;
-  marker.action = visualization_msgs::Marker::ADD;
-
-  marker.pose.position.x = pose.position.x;
-  marker.pose.position.y = pose.position.y;
-  marker.pose.position.z = pose.position.z;
-  marker.pose.orientation.x = pose.orientation.x;
-  marker.pose.orientation.y = pose.orientation.y;
-  marker.pose.orientation.z = pose.orientation.z;
-  marker.pose.orientation.w = pose.orientation.w;
-
-  marker.scale.x = body.dimensions[0];
-  marker.scale.y = body.dimensions[1];
-  marker.scale.z = body.dimensions[2];
-
-  marker.color.r = 0.0f;
-  marker.color.g = 0.0f;
-  marker.color.b = 1.0f;
-  marker.color.a = 0.5;
-
-  marker.lifetime = ros::Duration();
-  obstacle_pub.publish(marker);
-  r.sleep();
-  */
-
   if (client.call(srv))
   {
     /* writing results of scenario to m-file. use supplied script to visualize */
@@ -155,6 +114,10 @@ int main(int argc, char **argv)
     std::string pkgPath = ros::package::getPath("request");
     pathPublication.open((pkgPath+"/visualization/inspectionScenario.m").c_str(), std::ios::out);
     mavPathPublication.open((pkgPath+"/visualization/mavPath.txt").c_str(), std::ios::out);
+    Eigen::Vector3d last_mav_p(g_mavStartPos);
+    double last_mav_yaw;
+    double mav_time = 0;
+    int mav_wayp_no = 0;
     if(!pathPublication.is_open())
     {
       ROS_ERROR("Could not open 'inspectionScenario.m'! Inspection path is not written to file");
@@ -170,9 +133,27 @@ int main(int argc, char **argv)
     {
       tf::Pose pose;
       tf::poseMsgToTF(it->pose, pose);
-      double yaw_angle = tf::getYaw(pose.getRotation());
+      double yaw_angle = tf::getYaw(it->pose.orientation);
       pathPublication << it->pose.position.x << ", " << it->pose.position.y << ", " << it->pose.position.z << ", 0, 0, " << yaw_angle << ";\n";
-      mavPathPublication << "0 " << it->pose.position.x << " " << it->pose.position.y << " " << it->pose.position.z << " " << yaw_angle*180.0/M_PI << "\n";
+
+      Eigen::Vector3d mav_p(it->pose.position.x, it->pose.position.y, it->pose.position.z);
+      double mav_yaw = yaw_angle;
+      // time estimation
+      if (mav_wayp_no != 0) {
+        std::cout << "g_maxSpeed: " << g_maxSpeed << std::endl;
+        double tp = (mav_p - last_mav_p).norm() / g_maxSpeed;
+        std::cout << "tp: " << tp << std::endl;
+        std::cout << "g_maxAngularSpeed: " << g_maxAngularSpeed << std::endl;
+        double ty = std::abs(mav_yaw - last_mav_yaw) / g_maxAngularSpeed;
+        std::cout << "ty: " << ty << std::endl;
+        if (std::max(tp, ty) == 0.0) continue;
+        mav_time += std::max(tp, ty) * 2;
+      }
+      mav_wayp_no++;
+      last_mav_p = mav_p;
+      last_mav_yaw = mav_yaw;
+
+      mavPathPublication << mav_time << " " << mav_p[0] << " " << mav_p[1] << " " << mav_p[2] << " " << mav_yaw * 180.0/M_PI << "\n";
     }
     pathPublication << "];\n";
     pathPublication << "inspectionCost = " << srv.response.cost << ";\n";

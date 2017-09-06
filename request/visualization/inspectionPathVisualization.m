@@ -10,10 +10,11 @@
 clear all; close all;
 run('inspectionScenario');
 
+last = 100;%size(inspectionPath,1);
 handle = figure;
-plot3(inspectionPath(:,1),inspectionPath(:,2),inspectionPath(:,3),'b', 'LineWidth', 2.0,'LineSmoothing', 'on');
+plot3(inspectionPath(1:last,1),inspectionPath(1:last,2),inspectionPath(1:last,3),'b', 'LineWidth', 2.0,'LineSmoothing', 'on');
 hold on;
-quiver3(inspectionPath(:,1),inspectionPath(:,2),inspectionPath(:,3),3*cos(inspectionPath(:,6)),3*sin(inspectionPath(:,6)),zeros(size(inspectionPath(:,1))),'g')
+quiver3(inspectionPath(1:last,1),inspectionPath(1:last,2),inspectionPath(1:last,3),3*cos(inspectionPath(1:last,6)),3*sin(inspectionPath(1:last,6)),zeros(size(inspectionPath(1:last,1))),'g')
 patch(meshX',meshY',meshZ','r','EdgeColor','k','FaceAlpha',0.7);
 xlabel('x[m]');
 ylabel('y[m]');

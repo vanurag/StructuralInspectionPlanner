@@ -14,8 +14,12 @@
 #include <std_msgs/Int32.h>
 #include <ros/package.h>
 #include "tf/tf.h"
+#include <Eigen/Dense>
 
 std::vector<nav_msgs::Path> * readSTLfile(std::string name);
+double g_maxSpeed;
+double g_maxAngularSpeed;
+Eigen::Vector3d g_mavStartPos;
 
 int main(int argc, char **argv)
 {
@@ -36,6 +40,19 @@ int main(int argc, char **argv)
   ros::Rate r2(1.0);
   r2.sleep();
 
+  if(!ros::param::get("/Inspection_Planner/rotorcraft/maxSpeed", g_maxSpeed)) {
+    std::cout << "couldn't get max speed param" << std::endl;
+    exit(1);
+  } else {
+    std::cout << "got max speed param: " << g_maxSpeed << std::endl;
+  }
+  if(!ros::param::get("/Inspection_Planner/rotorcraft/maxAngularSpeed", g_maxAngularSpeed)) {
+    std::cout << "couldn't get max angular speed param" << std::endl;
+    exit(1);
+  } else {
+    std::cout << "got max angular speed param: " << g_maxAngularSpeed << std::endl;
+  }
+
   /* define the bounding box */
   koptplanner::inspection srv;
   srv.request.spaceSize.push_back(50);
@@ -48,8 +65,11 @@ int main(int argc, char **argv)
 
   /* starting pose*/
   reqPose.position.x = 25.0;
+  g_mavStartPos[0] = reqPose.position.x;
   reqPose.position.y = 25.0;
+  g_mavStartPos[1] = reqPose.position.y;
   reqPose.position.z = -55.0;
+  g_mavStartPos[2] = reqPose.position.z;
   tf::Quaternion q = tf::createQuaternionFromRPY(0.0, 0.0, 0.0);
   reqPose.orientation.x = q.x();
   reqPose.orientation.y = q.y();
@@ -101,21 +121,53 @@ int main(int argc, char **argv)
   if (client.call(srv))
   {
     /* writing results of scenario to m-file. use supplied script to visualize */
-    std::fstream pathPublication;
+    std::fstream pathPublication, mavPathPublication;
     std::string pkgPath = ros::package::getPath("request");
     pathPublication.open((pkgPath+"/visualization/inspectionScenario.m").c_str(), std::ios::out);
+    mavPathPublication.open((pkgPath+"/visualization/mavPath.txt").c_str(), std::ios::out);
+    Eigen::Vector3d last_mav_p(g_mavStartPos);
+    double last_mav_yaw;
+    double mav_time = 0;
+    int mav_wayp_no = 0;
     if(!pathPublication.is_open())
     {
       ROS_ERROR("Could not open 'inspectionScenario.m'! Inspection path is not written to file");
       return 1;
     }
+    if(!mavPathPublication.is_open())
+    {
+      ROS_ERROR("Could not open 'mavPath.txt'! Mav path is not written to file");
+      return 1;
+    }
     pathPublication << "inspectionPath = [";
     for(std::vector<geometry_msgs::PoseStamped>::iterator it = srv.response.inspectionPath.poses.begin(); it != srv.response.inspectionPath.poses.end(); it++)
     {
+//      std::cout << "pose msg: " << it->pose.orientation.x << " " << it->pose.orientation.y << " " << it->pose.orientation.z << " " << it->pose.orientation.w << std::endl;
       tf::Pose pose;
       tf::poseMsgToTF(it->pose, pose);
-      double yaw_angle = tf::getYaw(pose.getRotation());
+//      std::cout << "pose TF: " << pose.getRotation().x() << " " << pose.getRotation().y() << " " << pose.getRotation().z() << " " << pose.getRotation().w() << std::endl;
+      double yaw_angle = tf::getYaw(it->pose.orientation);
+//      std::cout << "yaw: " << yaw_angle << std::endl;
       pathPublication << it->pose.position.x << ", " << it->pose.position.y << ", " << it->pose.position.z << ", 0, 0, " << yaw_angle << ";\n";
+
+      Eigen::Vector3d mav_p(it->pose.position.x, it->pose.position.y, it->pose.position.z);
+      double mav_yaw = yaw_angle;
+      // time estimation
+      if (mav_wayp_no != 0) {
+//        std::cout << "g_maxSpeed: " << g_maxSpeed << std::endl;
+        double tp = (mav_p - last_mav_p).norm() / g_maxSpeed;
+//        std::cout << "tp: " << tp << std::endl;
+//        std::cout << "g_maxAngularSpeed: " << g_maxAngularSpeed << std::endl;
+        double ty = std::abs(mav_yaw - last_mav_yaw) / g_maxAngularSpeed;
+//        std::cout << "ty: " << ty << std::endl;
+        if (std::max(tp, ty) == 0.0) continue;
+        mav_time += std::max(tp, ty) * 2;
+      }
+      mav_wayp_no++;
+      last_mav_p = mav_p;
+      last_mav_yaw = mav_yaw;
+
+      mavPathPublication << mav_time << " " << mav_p[0] << " " << mav_p[1] << " " << mav_p[2] << " " << mav_yaw * 180.0/M_PI << "\n";
     }
     pathPublication << "];\n";
     pathPublication << "inspectionCost = " << srv.response.cost << ";\n";
