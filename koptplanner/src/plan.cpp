@@ -542,11 +542,14 @@ bool plan(koptplanner::inspection::Request  &req,
       tf::Quaternion q = tf::createQuaternionFromRPY(VP[i][3],VP[i][4],VP[i][5]);
 #else
       tf::Quaternion q = tf::createQuaternionFromRPY(0,0,VP[i][3]);
+      //std::cout << "yaw: " << VP[i][3] << std::endl;
 #endif
       point.pose.orientation.x = q.x();
       point.pose.orientation.y = q.y();
       point.pose.orientation.z = q.z();
       point.pose.orientation.w = q.w();
+
+      //std::cout << "orientation: " << q.x() << " " << q.y() << " " << q.z() << " " << q.w() << std::endl;
 
       double scaleVP = sqrt(SQ(problemBoundary.size[0])+SQ(problemBoundary.size[1])+SQ(problemBoundary.size[2]))/70.0;
       point.scale.x = scaleVP;

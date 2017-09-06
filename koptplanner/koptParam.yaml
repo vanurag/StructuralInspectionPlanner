@@ -1,7 +1,7 @@
 #camera parameters
-camera/horizontal: deg(120)
-camera/vertical: deg(120)
-camera/pitch: deg(25)
+camera/horizontal: deg(114.65)
+camera/vertical: deg(98.9279)
+camera/pitch: deg(0)
 
 #rotorcraft parameters
 rotorcraft/maxSpeed: 0.25
