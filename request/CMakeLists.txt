@@ -16,6 +16,7 @@ find_package(catkin REQUIRED COMPONENTS
   shape_msgs
   koptplanner
   message_generation
+  octomap_ros
 )
 
 ## System dependencies are found with CMake's conventions

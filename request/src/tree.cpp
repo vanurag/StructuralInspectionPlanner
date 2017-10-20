@@ -15,11 +15,16 @@
 #include <ros/package.h>
 #include "tf/tf.h"
 #include <Eigen/Dense>
+#include <octomap/octomap.h>
+
+using namespace octomap;
 
 std::vector<nav_msgs::Path> * readSTLfile(std::string name);
 double g_maxSpeed;
 double g_maxAngularSpeed;
 Eigen::Vector3d g_mavStartPos;
+unsigned char g_ocTreeMaxDepth = 16;
+std::list<octomap::OcTreeVolume> g_ocTreeVoxels;
 
 int main(int argc, char **argv)
 {
@@ -51,6 +56,15 @@ int main(int argc, char **argv)
     exit(1);
   } else {
     std::cout << "got max angular speed param: " << g_maxAngularSpeed << std::endl;
+  }
+
+  std::cout << "\nReading OcTree file\n===========================\n" << std::endl;
+  OcTree* tree = new OcTree(std::string("/home/anurag/Desktop/bla.bt"));
+  std::cout << "Octree depth: " << tree->getTreeDepth() << std::endl;
+  for(OcTree::leaf_iterator it = tree->begin_leafs(g_ocTreeMaxDepth), end=tree->end_leafs();
+      it!= end; ++it){
+    // do something:
+    if (it->getValue() > 0) std::cout << it.getDepth() << "  " << it.getCoordinate() << "  " << it.getSize() << "  " << it->getValue() << std::endl;
   }
 
   /* define the bounding box */
