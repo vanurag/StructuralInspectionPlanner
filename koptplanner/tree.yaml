@@ -6,3 +6,7 @@ camera/pitch: deg(0)
 #rotorcraft parameters
 rotorcraft/maxSpeed: 0.25
 rotorcraft/maxAngularSpeed: 0.5
+
+#octree parameters
+octree/maxDepth: 14
+octree/inspectionVolumeIndex: 17

@@ -19,12 +19,14 @@
 
 using namespace octomap;
 
+bool isInsideVoxel(const geometry_msgs::Point32& p, const octomap::OcTreeVolume v);
 std::vector<nav_msgs::Path> * readSTLfile(std::string name);
 double g_maxSpeed;
 double g_maxAngularSpeed;
 Eigen::Vector3d g_mavStartPos;
-unsigned char g_ocTreeMaxDepth = 16;
-std::list<octomap::OcTreeVolume> g_ocTreeVoxels;
+int g_ocTreeMaxDepth = 16;
+std::vector<octomap::OcTreeVolume> g_ocTreeVoxels;
+int g_inspectionVolumeIndex;
 
 int main(int argc, char **argv)
 {
@@ -57,20 +59,37 @@ int main(int argc, char **argv)
   } else {
     std::cout << "got max angular speed param: " << g_maxAngularSpeed << std::endl;
   }
+  if(!ros::param::get("/Inspection_Planner/octree/maxDepth", g_ocTreeMaxDepth)) {
+    std::cout << "couldn't get octree max depth param" << std::endl;
+    exit(1);
+  } else {
+    std::cout << "got octree max depth param: " << g_ocTreeMaxDepth << std::endl;
+  }
+  if(!ros::param::get("/Inspection_Planner/octree/inspectionVolumeIndex", g_inspectionVolumeIndex)) {
+    std::cout << "couldn't get octree inspection volume index" << std::endl;
+    exit(1);
+  } else {
+    std::cout << "got octree inspection volume index: " << g_inspectionVolumeIndex << std::endl;
+  }
 
+  /* Read octree */
   std::cout << "\nReading OcTree file\n===========================\n" << std::endl;
   OcTree* tree = new OcTree(std::string("/home/anurag/Desktop/bla.bt"));
   std::cout << "Octree depth: " << tree->getTreeDepth() << std::endl;
+  std::cout << "Num leaf nodes: " << tree->getNumLeafNodes() << std::endl;
   for(OcTree::leaf_iterator it = tree->begin_leafs(g_ocTreeMaxDepth), end=tree->end_leafs();
       it!= end; ++it){
-    // do something:
-    if (it->getValue() > 0) std::cout << it.getDepth() << "  " << it.getCoordinate() << "  " << it.getSize() << "  " << it->getValue() << std::endl;
+    if (it->getValue() > 0) {
+      std::cout << it.getDepth() << "  " << it.getCoordinate() << "  " << it.getSize() << "  " << it->getOccupancy() << std::endl;
+      g_ocTreeVoxels.push_back(std::make_pair(it.getCoordinate(), it.getSize()));
+    }
   }
+  std::cout << "Finished reading octree..." << std::endl;
 
   /* define the bounding box */
   koptplanner::inspection srv;
-  srv.request.spaceSize.push_back(12);
-  srv.request.spaceSize.push_back(12);
+  srv.request.spaceSize.push_back(30);
+  srv.request.spaceSize.push_back(30);
   srv.request.spaceSize.push_back(12);
   srv.request.spaceCenter.push_back(0);
   srv.request.spaceCenter.push_back(0);
@@ -78,7 +97,7 @@ int main(int argc, char **argv)
   geometry_msgs::Pose reqPose;
 
   /* starting pose*/
-  reqPose.position.x = 6.0;
+  reqPose.position.x = 10.0;
   g_mavStartPos[0] = reqPose.position.x;
   reqPose.position.y = 0.0;
   g_mavStartPos[1] = reqPose.position.y;
@@ -98,28 +117,94 @@ int main(int argc, char **argv)
   srv.request.numIterations = 40;
 
   /* read STL file and publish to rviz */
+  std::string fname(ros::package::getPath("request")+std::string("/meshes/tree.stl"));
+  ROS_INFO("Reading mesh: %s", fname.c_str());
   std::vector<nav_msgs::Path> * mesh = readSTLfile(ros::package::getPath("request")+"/meshes/tree.stl");
   ROS_INFO("mesh size = %i", (int)mesh->size());
+  int num_mesh_tri = 0;
   for(std::vector<nav_msgs::Path>::iterator it = mesh->begin(); it != mesh->end() && ros::ok(); it++)
   {
-    stl_pub.publish(*it);
     geometry_msgs::Polygon p;
     geometry_msgs::Point32 p32;
     p32.x = it->poses[0].pose.position.x;
     p32.y = it->poses[0].pose.position.y;
     p32.z = it->poses[0].pose.position.z;
+    if (! isInsideVoxel(p32, g_ocTreeVoxels[g_inspectionVolumeIndex])) continue;
     p.points.push_back(p32);
     p32.x = it->poses[1].pose.position.x;
     p32.y = it->poses[1].pose.position.y;
     p32.z = it->poses[1].pose.position.z;
+    if (! isInsideVoxel(p32, g_ocTreeVoxels[g_inspectionVolumeIndex])) continue;
     p.points.push_back(p32);
     p32.x = it->poses[2].pose.position.x;
     p32.y = it->poses[2].pose.position.y;
     p32.z = it->poses[2].pose.position.z;
+    if (! isInsideVoxel(p32, g_ocTreeVoxels[g_inspectionVolumeIndex])) continue;
     p.points.push_back(p32);
     srv.request.inspectionArea.push_back(p);
+    stl_pub.publish(*it);
+    num_mesh_tri++;
     r.sleep();
   }
+  ROS_INFO("No. of mesh triangles: %d", num_mesh_tri);
+
+  /* define obstacle regions as cuboids that are coordinate system aligned */
+  int obstacle_id = 0;
+  for (std::vector<octomap::OcTreeVolume>::iterator it = g_ocTreeVoxels.begin();
+       it != g_ocTreeVoxels.end(); ++it) {
+    if (*it != g_ocTreeVoxels[g_inspectionVolumeIndex]) {
+      shape_msgs::SolidPrimitive body;
+      body.type = shape_msgs::SolidPrimitive::BOX;
+      body.dimensions.push_back(it->second);
+      body.dimensions.push_back(it->second);
+      body.dimensions.push_back(it->second);
+      srv.request.obstacles.push_back(body);
+      geometry_msgs::Pose pose;
+      pose.position.x = it->first.x();
+      pose.position.y = it->first.y();
+      pose.position.z = it->first.z();
+      pose.orientation.x = 0.0;
+      pose.orientation.y = 0.0;
+      pose.orientation.z = 0.0;
+      pose.orientation.w = 1.0;
+      srv.request.obstaclesPoses.push_back(pose);
+      srv.request.obstacleIntransparancy.push_back(0);
+
+      // publish obstacles for rviz
+      visualization_msgs::Marker marker;
+      marker.header.frame_id = "/kopt_frame";
+      marker.header.stamp = ros::Time::now();
+      marker.ns = "obstacles";
+      marker.id = obstacle_id; // enumerate when adding more obstacles
+      obstacle_id++;
+      marker.type = visualization_msgs::Marker::CUBE;
+      marker.action = visualization_msgs::Marker::ADD;
+
+      marker.pose.position.x = pose.position.x;
+      marker.pose.position.y = pose.position.y;
+      marker.pose.position.z = pose.position.z;
+      marker.pose.orientation.x = pose.orientation.x;
+      marker.pose.orientation.y = pose.orientation.y;
+      marker.pose.orientation.z = pose.orientation.z;
+      marker.pose.orientation.w = pose.orientation.w;
+
+      marker.scale.x = body.dimensions[0];
+      marker.scale.y = body.dimensions[1];
+      marker.scale.z = body.dimensions[2];
+
+      marker.color.r = 0.0f;
+      marker.color.g = 0.0f;
+      marker.color.b = 1.0f;
+      marker.color.a = 0.5;
+
+      marker.lifetime = ros::Duration();
+      obstacle_pub.publish(marker);
+      r.sleep();
+    }
+  }
+
+
+
 
   if (client.call(srv))
   {
@@ -201,6 +286,23 @@ int main(int argc, char **argv)
   }
 
   return 0;
+}
+
+/**
+*  \brief This function returns true if a point is within an Octree voxel
+*/
+bool isInsideVoxel(const geometry_msgs::Point32& p, const octomap::OcTreeVolume v) {
+  bool res = true;
+  res = res & (p.x <= v.first.x() + v.second/2.0);
+  res = res & (p.x >= v.first.x() - v.second/2.0);
+
+  res = res & (p.y <= v.first.y() + v.second/2.0);
+  res = res & (p.y >= v.first.y() - v.second/2.0);
+
+  res = res & (p.z <= v.first.z() + v.second/2.0);
+  res = res & (p.z >= v.first.z() - v.second/2.0);
+
+  return res;
 }
 
 /**
