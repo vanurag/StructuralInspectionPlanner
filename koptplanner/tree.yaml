@@ -1,12 +1,28 @@
 #camera parameters
-camera/horizontal: deg(114.65)
-camera/vertical: deg(98.9279)
+camera/horizontal: deg(90.0)
+camera/vertical: deg(90.0)
 camera/pitch: deg(0)
 
 #rotorcraft parameters
 rotorcraft/maxSpeed: 0.25
 rotorcraft/maxAngularSpeed: 0.5
 
+#scenario parameters
+algorithm/security_distance: 0.05
+
+#algorithm parameters
+#algorithm/rrt_scope: 30.0
+#algorithm/rrt_it_init: 10
+
 #octree parameters
-octree/maxDepth: 14
-octree/inspectionVolumeIndex: 17
+octree/inspectionDepth: 12
+octree/inspectionVolumeIndex: -1
+
+#interface parameters
+interface/mavStartPosition: [-7.0, 0.0, 0.5]
+interface/numIntermediatePositions: 0
+interface/boundingBox: [0, 0, 6.5, 20, 20, 12]
+interface/incidenceAngle: 0.0
+interface/minDist: 1.5
+interface/maxDist: 15.0
+interface/numIterations: 4
